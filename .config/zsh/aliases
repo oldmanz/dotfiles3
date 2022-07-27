@@ -1,0 +1,43 @@
+
+
+alias gg="cd ~/.config/guix"
+alias gn="cd ~/2n"
+alias gc="cd ~/.config"
+
+alias gitg="cd ~/.config/guix && git add . && git commit -m 'auto' && git push"
+
+alias oh="nvim ~/.config/guix/home.scm"
+alias os="nvim ~/.config/guix/system.scm"
+alias oz="nvim ~/.config/guix/src/zsh/zshrc"
+alias ow="nvim ~/.config/guix/src/i3/config"
+alias ov="nvim ~/.config/guix/src/nvim/init.vim"
+alias oe="nvim ~/.config/guix/src/emacs/init.el"
+
+alias s="gu s"
+alias h="gu h"
+alias nu="nix-env --upgrade --verbose"
+alias f="gu f"
+
+alias w="curl wttr.in"
+
+alias vim='nvim'
+alias vi='nvim'
+alias v='nvim'
+
+alias ll='ls -l'
+alias l.='ls -a'
+
+alias cp="cp -i"
+alias df='df -h'                                                # Human-readable sizes
+
+alias ..="cd .."
+alias ...="cd ../../"
+alias ....="cd ../../../"
+alias .....="cd ../../../../"
+
+alias 2='n'
+
+alias sudo='sudo '
+
+alias e='exit'
+alias c='clear'

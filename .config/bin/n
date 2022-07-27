@@ -1,0 +1,723 @@
+#!/usr/bin/env python3
+
+# 2N Docker Manager for Local Dev
+
+import os
+import shutil
+import sys
+import subprocess
+import json
+version = 2.0
+container_name = "2nform"
+image = "2nform/docker-local-dev:latest"
+
+
+home_dir = os.path.expanduser("~")
+
+
+try:
+    import docker
+    from docker.utils import kwargs_from_env
+    from rich.console import Console
+    from rich.table import Table
+    from rich.progress import Progress
+except:
+    print("Modules not found.  Attempting Install...")
+    try:
+        subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'docker'])
+        subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'rich'])
+        print("Installation complete!")
+        import docker
+        from docker.utils import kwargs_from_env
+        from rich.console import Console
+        from rich.table import Table
+        from rich.progress import Progress
+    except:
+        print("Couldn't install Modules.  Is pip installed and in path?")
+        sys.exit()
+
+
+def main():
+    console = Console()
+    config = Config()
+    args = Args(console)
+    docker = Docker(config)
+
+    if not args.get(1):
+        docker.shell()
+        sys.exit()
+
+    dispatcher(args, docker, config)
+
+
+
+def dispatcher(args, docker, config):
+    console = Console()
+
+    arg1 = args.get(1)
+    arg2 = args.get(2)
+    arg3 = args.get(3)
+
+    if arg1 in ["start", "s"]:
+        docker.start()
+
+    elif arg1 in ["restart", "r"]:
+        docker.restart()
+
+    elif arg1 in ["stop", "q"]:
+        docker.stop()
+
+    elif arg1 in ["setup"]:
+        docker.setup()
+
+    elif arg1 in ["clone"]:
+        docker.clone()
+
+    elif arg1 in ["restore"]:
+        docker.restore()
+
+    elif arg1 in ["remove", "drop", "x"]:
+        if arg2 in ["hard", "h", "x"]:
+            if yesno("This will remove all data in volumes. Are you sure?", "no"):
+                docker.remove(True)
+        else:
+            if yesno("Are you sure?", "no"):
+                docker.remove()
+
+    elif arg1 in ["reset", "xx"]:
+        if yesno("This will remove all data. Are you sure?", "no"):
+            docker.reset()
+    
+    elif arg1 in ["refresh"]:
+        if yesno("This will remove your project data. Are you sure?", "no"):
+            docker.refresh()
+
+    elif arg1 in ["logs", "log", "l"]:
+        if arg2:
+            docker.logs(arg2)
+        else:
+            docker.logs()
+
+    elif arg1 in ["ssh"]:
+        docker.ssh()
+
+    elif arg1 in ["config", "vesion", "v", "-v"]:
+        config.view()
+
+    elif arg1 in ["help", "h"]:
+        showHelp()
+
+    elif arg1 in ["update"]:
+        docker.update()
+
+    else:
+        console.print("[red]Command " + arg1 + " " + arg2 +
+                      " " + arg3 + " : [red]Not Found")
+
+
+
+class Config:
+    def __init__(self):
+        self.console = Console()
+        self.version = version
+        self.image = image
+        self.name = container_name
+
+        self.home_dir = home_dir
+        self.filePath = self.home_dir + "/.2nform.conf"
+
+        self.config = {}
+
+        self.exists()
+
+        self.check()
+
+
+    def exists(self):
+        if not os.path.exists(self.filePath):
+            self.createDefaultConfig()
+        else:
+            try:
+                with open(self.filePath, "r") as configfile:
+                    self.config = json.load(configfile)
+            except:
+                self.error()
+
+    # Check Config for Errors
+
+    def check(self):
+        try:
+            assert type(self.get("manager", "accepted")) == bool
+            assert type(self.get("container", "image")) == str
+            assert type(self.get("container", "detach")) == bool
+            assert type(self.get("container", "restart_policy")) == dict
+            assert type(self.get("container", "name")) == str
+            assert type(self.get("container", "hostname")) == str
+            assert type(self.get("container", "ports")) == dict
+            assert type(self.get("container", "volumes")) == dict
+            assert type(self.get("container", "environment")) == list
+
+            if self.get("container", "image") != self.image:
+                self.update("containe", "image", self.image)
+                self.write()
+
+        except Exception as e:
+            self.error()
+
+    def error(self):
+        self.console.print("There is an error in your config file.")
+        if yesno("Would you like to reset it? (your old config will be backed up)", "yes"):
+            self.createDefaultConfig()
+            self.console.print(
+                "Config reset!  Backup at {}/.2nform.conf.bak".format(home_dir))
+        else:
+            sys.exit()
+
+    # Creates a default config
+
+    def createDefaultConfig(self):
+        # Define some defaults
+        self.config = {
+            'manager': {
+                'accepted': False
+            },
+            'container': {
+                'image': self.image,
+                'detach': True,
+                'restart_policy': {"Name": "always"},
+                'name': self.name,
+                'hostname': self.name,
+                'ports': {
+                    80: 80,
+                    5432: 15432,
+                    9003: 9003,
+                    3000: 3000,
+                    5000: 5000,
+                    35729: 35729
+                },
+                'volumes': {
+                    "2nform": {
+                        "bind": "/var/www",
+                                "mode": "rw"
+                    },
+                    "postgres-data": {
+                        "bind": "/var/lib/postgresql",
+                                "mode": "rw"
+                    },
+                    "user-data": {
+                        "bind": "/root",
+                                "mode": "rw"
+                    },
+                    "database-backup": {
+                        "bind": "/backups",
+                                "mode": "rw"
+                    }
+                },
+                'environment': [
+                    'GIT_USERNAME=',
+                    'GIT_EMAIL=',
+                    'AWS_ACCESS_KEY_ID=',
+                    'AWS_SECRET_ACCESS_KEY='
+                ]
+            }
+        }
+        self.write()
+
+    # Writes Config to File
+
+    def write(self):
+        try:
+            shutil.copyfile(self.filePath, self.filePath+".bak")
+        except:
+            pass
+        # Open File and Write Config
+        with open(self.filePath, 'w') as configfile:
+            json.dump(self.config, configfile,  indent=4)
+
+    # Takes Two Strings and returns value.
+
+    def get(self, title, field=""):
+        try:
+            if field:
+                return self.config[title][field]
+            else:
+                return self.config[title]
+        except:
+            return None
+
+    # Takes Two Strings and Updates Config Object
+    # Must Write Changes to Update
+
+    def update(self, title, field, value):
+        self.config[title][field] = value
+
+    def viewVersion(self):
+        # Setup Version Table
+        tableVersions = Table(
+            show_header=True,
+            header_style="bold blue",
+            title="Versions",
+            title_style="bold red"
+        )
+        tableVersions.add_column("Manager")
+        tableVersions.add_column("Image")
+
+        # Setup Var
+        cc = self.config.get("container")
+
+        # Add versions to version table
+        tableVersions.add_row(
+            "[red]"+str(version), "[red]"+cc["image"])
+
+        # Show tables
+        self.console.print(tableVersions)
+
+    def viewConfig(self, ports=False, volumes=False, envs=False):
+        # Setup Container Table
+        table = Table(
+            show_header=True,
+            header_style="bold blue",
+            title="Config",
+            title_style="bold red"
+        )
+        table.add_column("Ports")
+        table.add_column("Volumes")
+        table.add_column("Environment")
+
+        # Setup Vars
+        if not ports or not volumes or not envs:
+            cm = self.config.get("manager")
+            cc = self.config.get("container")
+            ports = cc["ports"]
+            volumes = cc["volumes"]
+            envs = cc["environment"]
+
+        # Create sub tables
+        pTable = Table(show_header=False, box=None)
+        for port in ports:
+            pTable.add_row("[yellow]" + str(port) + " : " + str(ports[port]))
+
+        vTable = Table(show_header=False, box=None)
+        for volume in volumes:
+            vTable.add_row("[magenta]"+volume + " : " +
+                           volumes[volume]["bind"])
+
+        eTable = Table(show_header=False, box=None)
+        for env in envs:
+            eTable.add_row("[green]"+env)
+
+        # Add sub tables to main
+        table.add_row(
+            pTable,
+            vTable,
+            eTable
+        )
+
+        self.console.print(table)
+
+    # View Current Config
+
+    def view(self):
+        self.viewVersion()
+        self.viewConfig()
+
+
+#######  Passed Arguments ########
+class Args:
+    def __init__(self, console):
+        # Setup rich console
+        self.console = console
+
+        # Set args to list of passed args
+        self.args = sys.argv
+
+    # Takes index, returns Arg Value
+    # Returns '' if none found
+    def get(self, index):
+        try:
+            return self.args[index]
+        except:
+            return ""
+
+    # Returns length of Args
+
+    def length(self):
+        return len(self.args)
+
+
+####### Docker Management #####
+class Docker:
+    def __init__(self, config):
+        # Setup rich console
+        self.console = Console()
+
+        # Setup Config
+        self.config = config
+
+        # Set Container Name
+        self.name = container_name
+
+        # Create client
+        self.client = docker.from_env()
+        self.api = docker.APIClient(**kwargs_from_env())
+
+        # Check if container exists
+        self.container = self.container()
+
+        # Get Container Status
+        self.status = self.status()
+        if self.status != 'running':
+            self.start()
+
+    # Returns container if exists
+    # Starts Setup if No Container
+    # Exits if Docker Not Running or Installed
+
+    def container(self):
+        try:
+            container = self.client.containers.get(self.name)
+
+            return container
+        except (docker.errors.NotFound):
+            # Check if configured and start
+            self.init()
+            return self.container
+        except (docker.errors.APIError):
+            self.console.print(
+                "Docker Down or Not Installed", style="bold red")
+            sys.exit()
+
+    # Returns Container Status
+    # Either 'running' or 'exited'
+
+    def status(self):
+        try:
+            return self.container.status
+        except:
+            return "none"
+
+    # Stop Container
+    def stop(self):
+        try:
+            self.console.print("Stopping...", style="blue")
+            self.container.stop()
+            self.console.print("Container Stopped", style="green")
+        except:
+            self.console.print("Error Stopping Container", style="bold red")
+
+    # Start Container
+    def start(self):
+        try:
+            self.console.print("Starting...", style="blue")
+            self.container.start()
+            self.console.print("Container Started", style="bold green")
+        except:
+            self.console.print("Error Starting Container", style="bold red")
+
+    # Restart Container
+    def restart(self):
+        try:
+            self.console.print("Restarting...", style="blue")
+            self.container.restart()
+            self.console.print("Container Restarted", style="bold green")
+        except:
+            self.console.print("Error Restarting Container", style="bold red")
+
+    # Remove Container
+    # Pass True to drop volumes associated with the container.
+
+    def remove(self, drop=False):
+        try:
+            self.stop()
+            self.container.remove(v=drop)
+            self.console.print("Container Removed")
+        except:
+            self.console.print("Error Removing Container")
+        
+    def reset(self):
+        try:
+            self.remove(True)
+            self.run()
+        except:
+            self.console.print("Error Resetting Container")
+
+    def refresh(self):
+        try:
+            self.remove()
+            os.system("docker volume rm 2nform")
+            self.run()
+        except:
+            self.console.print("Refresh Failed")
+
+    def restore(self, file=False):
+        try:
+            if yesno("This will remove all postgres data and restore with new.  Are you sure?", "no"):
+                self.remove()
+                os.system("docker volume rm postgres-data")
+                self.run()
+        except:
+            self.console.print("Error Starting Restore.")
+
+    # Start Shell
+    # TODO - Convert to docker-py. (can't get stdin and tty to work)
+
+    def shell(self):
+        try:
+            clear()
+            os.system("docker exec -it " + self.name + " zsh")
+            clear()
+        except:
+            self.console.print("Error Starting Shell")
+
+    # Show SSH Key
+    def ssh(self):
+        os.system("docker exec -it " + self.name +
+                  " cat /root/.ssh/id_ed25519.pub")
+
+    # Show Logs
+
+    def logs(self, type=False):
+        if type:
+            os.system("docker exec -it " + self.name +
+                      " tail -f /var/log/2nform/" + type + ".log")
+        else:
+            os.system("docker logs " + self.name)
+
+    # Run the Container
+
+    def run(self):
+        # Set cc to container config
+        cc = self.config.get("container")
+        # Show current Config
+        self.config.view()
+
+        # Prompt user to continue
+        if yesno("Does this look correct?"):
+            # Pull the Image
+            self.pull(cc["image"])
+            # Run Container
+            self.console.print("Running Container...", style="blue")
+            print(cc["volumes"])
+            self.container = self.client.containers.run(
+                image=cc["image"],
+                detach=cc["detach"],
+                restart_policy=cc["restart_policy"],
+                name=cc["name"],
+                hostname=cc["hostname"],
+                ports=cc["ports"],
+                volumes=cc["volumes"],
+                environment=cc["environment"]
+            )
+
+            self.console.print("Container Running", style="green")
+        else:
+            self.setup()
+
+    # Pull Image
+
+    def pull(self, image):
+        tasks = {}
+        ids = []
+        # Start a progress bar
+        try:
+            with Progress() as progress:
+                # Use low level api to get download status.
+                for line in self.api.pull(image, stream=True, decode=True):
+                    try:
+                        id = line["id"]
+                        if not line["id"] in ids:
+                            try:
+                                tasks[id] = progress.add_task(
+                                    line["status"], total=line["progressDetail"]["total"])
+                            except:
+                                tasks[id] = progress.add_task(line["status"])
+
+                            ids.append(id)
+                        else:
+                            try:
+                                progress.update(
+                                    tasks[id], description=line["status"], completed=line["progressDetail"]["current"], total=line['progressDetail']['total'])
+                            except:
+                                print()
+                    except:
+                        # TODO Figure out a better way to do the above.  Error catch all.
+                        self.console.print("Possible Error")
+        except:
+            self.console.print("Image Not Found on Remote")
+
+    # Init run
+
+    def init(self):
+        accepted = bool(self.config.get("manager", "accepted"))
+        if accepted:
+            self.run()
+        else:
+            self.console.print(
+                "[red]Please edit and accept the configuration in [yellow]{}/.2nform.conf".format(home_dir))
+            sys.exit()
+
+    # Setup Projects
+    def setup(self):
+        os.system("docker exec -it {} setup".format(self.name))
+
+    def clone(self):
+        os.system("docker exec -it {} clone".format(self.name))
+
+    def update(self):
+        self.pull(image)
+        self.remove()
+        self.run()
+
+
+########  Misc Functions  #####################
+
+
+### Yes / No ##
+# Pass question and the default answer
+def yesno(label, default="yes"):
+
+    console = Console()
+
+    valid = {"yes": True, "y": True, "Y": True,
+             "no": False, "n": False, "N": False}
+    if default is None:
+        prompt = " [green](y[yellow]/[red]n) "
+    elif default == "yes":
+        prompt = " [yellow]([bold green]Y[yellow]/[red]n[yellow]) "
+    elif default == "no":
+        prompt = " [yellow]([green]y[yellow]/[bold red]N[yellow]) "
+    else:
+        raise ValueError("invalid default answer: '%s'" % default)
+
+    while True:
+        console.print("[yellow]" + label + prompt)
+        choice = input().lower()
+        if default is not None and choice == '':
+            return valid[default]
+        elif choice in valid:
+            return valid[choice]
+        else:
+            console.print("[bold red]Invalid input\n")
+
+
+def getOS():
+    if sys.platform.startswith('linux'):
+        return "linux"
+    elif sys.platform == 'darwin':
+        return "mac"
+    elif sys.platform == "win32":
+        return "windows"
+    else:
+        return "unknown"
+
+
+def createNFSMount(folderDir):
+    console = Console()
+    if getOS() != "mac":
+        console.print("[red] Can't Create an NFS Mount on this OS!")
+        sys.exit()
+
+    console.print("[blue] NFS Mount Creation")
+
+    if not yesno("[yellow]This will stop any running containers. Would you like to continue?"):
+        sys.exit()
+
+    try:
+        subprocess.run([
+            'echo "== Stopping running docker containers..."',
+            'docker-compose down > /dev/null 2>&1',
+            'docker volume prune -f > /dev/null',
+            """osascript -e 'quit app "Docker"'""",
+            "mkdir {}".format(folderDir),
+            'echo "== Resetting folder permissions..."',
+            'U=`id -u`',
+            'G=`id -g`',
+            'sudo chown -R "$U":"$G" .',
+            'echo "== Setting up nfs..."',
+            'LINE="/System/Volumes/Data -alldirs -mapall=$U:$G localhost"',
+            'FILE=/etc/exports',
+            'sudo cp /dev/null $FILE',
+            'grep -qF -- "$LINE" "$FILE" || sudo echo "$LINE" | sudo tee -a $FILE > /dev/null',
+            'LINE="nfs.server.mount.require_resv_port = 0"',
+            'FILE=/etc/nfs.conf',
+            'grep -qF -- "$LINE" "$FILE" || sudo echo "$LINE" | sudo tee -a $FILE > /dev/null',
+            'echo "== Restarting nfsd..."',
+            'sudo nfsd restart',
+            'echo "== Restarting docker..."',
+            'open -a Docker',
+            'while ! docker ps > /dev/null 2>&1 ; do sleep 2; done',
+            'echo ""',
+            'echo "SUCCESS!"'
+        ])
+        return True
+    except:
+        console.print("[red]Error Creating NFS Mount")
+        sys.exit()
+
+
+# Clear screen
+def clear():
+
+    # If windows
+    if os.name == 'nt':
+        _ = os.system('cls')
+
+    ## Mac and Linux
+    else:
+        _ = os.system('clear')
+
+
+def showHelp():
+    console = Console()
+    table = Table(
+        show_header=True,
+        header_style="bold blue",
+        title="Docker Manager Command Reference",
+        title_style="bold red"
+    )
+    table.add_column("Command")
+    table.add_column("Description")
+
+    help = [
+        ["[blue]n [yellow](alone)",
+         "[yellow]Start Shell"],
+        ["", ""],
+        ["[blue]setup[yellow]|[blue]s", "[yellow]Start Project Setup"],
+        ["[blue]clone[yellow]|[blue]s", "[yellow]Clone Projects"],
+        ["", ""],
+        ["[blue]start[yellow]|[blue]s", "[yellow]Start Container"],
+        ["[blue]restart[yellow]|[blue]r", "[yellow]Restart Container"],
+        ["[blue]stop[yellow]|[blue]q", "[yellow]Stop Container"],
+        ["", ""],
+        ["[blue]update",
+         "[yellow]Start Docker Update."],
+        ["[blue]remove[yellow]|[blue]drop[yellow]|[blue]x",
+         "[yellow]Remove Container [green](Data Persists)"],
+        ["[blue]reset[yellow]|[blue]xx",
+         "[yellow]Reset Container [red](Data Lost)"],
+        ["", ""],
+        ["[blue]refresh",
+         "[yellow]Drop projects and re-clone/setup"],
+        ["[blue]restore",
+         "[yellow]Start a Database Restore [blue](Pulls latest backup)"],
+        ["", ""],
+        ["[blue]logs[yellow]|[blue]l", "[yellow]Show Container Logs"],
+        ["[blue]logs [yellow][[blue]api[yellow]|[blue]ram[yellow]|[blue]...[yellow]]",
+         "[yellow]Display Custom Logs"],
+        ["", ""],
+        ["[blue]ssh", "[yellow]Print your ssh key"],
+        ["[blue]config", "[yellow]View Current Manager Config"],
+        ["", ""],
+        ["[blue]version[yellow]|[blue]v[yellow]|[blue]-v", "[yellow]Print Version"],
+        ["[blue]help[yellow]|[blue]h", "[yellow]This!"]
+    ]
+
+    for i in help:
+        table.add_row(i[0], i[1])
+
+    console.print(table)
+
+
+############ Start Main Process ###########
+if __name__ == "__main__":
+    main()

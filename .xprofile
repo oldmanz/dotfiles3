@@ -1,0 +1,16 @@
+#!/bin/sh
+
+export ZDOTDIR=~/.config/zsh
+
+export SYSTEM_FONT="Fira Code Retina 10"
+
+export PATH="$HOME/.local/bin:$PATH"
+export PATH="$HOME/.config/bin:$PATH"
+export PATH="$HOME/.emacs.d/bin:$PATH"
+
+#emacs --daemon -f exwm-enable
+#exec emacsclient -c
+
+Emacs.font: Terminus-9
+
+(set-default-font “Terminus-9”)
