@@ -4,7 +4,7 @@ autoload -U colors && colors
 
 HISTSIZE=10000
 SAVEHIST=10000
-HISTFILE=./history
+HISTFILE=$ZDORDIR/history
 
 autoload -U compinit
 zstyle ':completion:*' menu select

@@ -1,0 +1,10 @@
+[user]
+	email = travis@oldmanz.com
+        name = oldmanz
+	signingkey = 78FA7117E5E1A5D6980C18FB0E46772539892CBC
+
+[gpg]
+        program = gpg
+
+[commit]
+        gpgsign = true

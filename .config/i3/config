@@ -8,7 +8,7 @@ set $launcher rofi -show combi -combi-modi 'window#drun#ssh' -show-icons
 
 set $logout rofi -show p -modi p:rofi-power-menu 
 
-set $wallpapers /home/oldmanz/.config/guix/src/wallpapers
+set $wallpapers /home/oldmanz/.config/wallpapers
 
 set $browser google-chrome-stable
 set $slack slack
@@ -185,7 +185,7 @@ set $darkgray #1d2021
 ## BAR
 bindsym $mod+z bar mode toggle
 bar {
-     	status_command SCRIPT_DIR=~/.config/guix/src/i3blocks/scripts i3blocks
+     	status_command SCRIPT_DIR=~/.config/i3blocks/scripts i3blocks
 	mode hide
 	position top
 
